@@ -50,7 +50,8 @@ bot.on("message:entities:url", async (ctx) => {
                 const info = await youtubedl(url, { dumpSingleJson: true, noDownload: true });
                 const title = info.title;
                 const duration = info.duration;
-                console.log("Video title:", title, "Duration:", duration);
+                const performer = info.uploader;
+                console.log("Video title:", title, "Duration:", duration, "Uploader:", performer);
 
                 const outputPath = path.join(__dirname, `output_${Date.now()}.mp3`);
                 console.log("Downloading video and extracting audio to:", outputPath);
@@ -75,7 +76,7 @@ bot.on("message:entities:url", async (ctx) => {
 
                     console.log("Audio file read successfully, sending to user...");
                     const sanitizedTitle = title.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50); 
-                    await ctx.replyWithAudio(new InputFile(fs.createReadStream(outputPath), `${sanitizedTitle}.mp3`), { caption: title });
+                    await ctx.replyWithAudio(new InputFile(fs.createReadStream(outputPath), `${sanitizedTitle}.mp3`), { performer, title, caption: title });
                     fs.unlinkSync(outputPath);
                 } else {
                     await ctx.reply("Failed to download the audio file.");
