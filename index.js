@@ -74,9 +74,9 @@ bot.on("message:entities:url", async (ctx) => {
                     const buffer = fs.readFileSync(outputPath);
 
                     console.log("Audio file read successfully, sending to user...");
-                    await ctx.replyWithAudio(new InputFile(fs.createReadStream(outputPath)), { caption: title });
-
-                    // fs.unlinkSync(outputPath); // Temporarily commented to inspect the file
+                    const sanitizedTitle = title.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50); 
+                    await ctx.replyWithAudio(new InputFile(fs.createReadStream(outputPath), `${sanitizedTitle}.mp3`), { caption: title });
+                    fs.unlinkSync(outputPath);
                 } else {
                     await ctx.reply("Failed to download the audio file.");
                 }
