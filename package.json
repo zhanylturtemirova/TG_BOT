@@ -1,0 +1,19 @@
+{
+ "name": "tubobubabot",
+ "version": "1.0.0",
+ "description": "",
+ "main": "index.js",
+ "scripts": {
+  "start": "nodemon index.js"
+ },
+ "keywords": [],
+ "author": "",
+ "license": "ISC",
+ "type": "commonjs",
+ "dependencies": {
+  "dotenv": "^17.4.2",
+  "grammy": "^1.42.0",
+  "nodemon": "^3.1.14",
+  "youtube-dl-exec": "^3.1.5"
+ }
+}
