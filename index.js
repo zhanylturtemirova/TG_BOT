@@ -122,7 +122,7 @@ bot.on("callback_query", async (ctx) => {
         return;
     }
 
-    const { url, info, title, performer } = pending;
+    const { url, info, title, performer, duration } = pending;
     await ctx.reply(`Processing YouTube ${format}${resolution ? ` ${resolution}p` : ''}...`);
 
     try {
@@ -142,7 +142,6 @@ bot.on("callback_query", async (ctx) => {
             console.log(`Using format filter: bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`);
             await youtubedl(url, {
                 output: outputPath,
-                // format: `best[height<=${resolution}]`
                 format: `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`
             });
         }
@@ -177,7 +176,7 @@ bot.on("callback_query", async (ctx) => {
                         .sort();
                     
                     for (let i = 0; i < parts.length; i++) {
-                        const partPath = path.join(__dirname, parts[i]);
+                        const partPath = path.join(__dirname, parts[i]); 
                         const partTitle = `${title} Part ${i + 1}`;
                         const sanitizedPartTitle = partTitle.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50);
                         if (format === "audio") {
@@ -195,7 +194,7 @@ bot.on("callback_query", async (ctx) => {
                 if (format === "audio") {
                     await ctx.replyWithAudio(new InputFile(fs.createReadStream(actualOutputPath), `${sanitizedTitle}.mp3`), { performer, title, caption: title });
                 } else {
-                    await ctx.replyWithVideo(new InputFile(fs.createReadStream(actualOutputPath), `${sanitizedTitle}.mp4`), { caption: title });
+                    await ctx.replyWithVideo(new InputFile(fs.createReadStream(actualOutputPath), `${sanitizedTitle}.mp4`), { performer, title, caption: title });
                 }
                 fs.unlinkSync(actualOutputPath);
             } else {
