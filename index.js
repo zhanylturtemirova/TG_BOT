@@ -2,15 +2,18 @@ require("dotenv").config();
 const youtubedl = require('youtube-dl-exec');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
-const  {Bot, GrammyError, HttpError, InputFile} = require("grammy");
+const  {Bot, GrammyError, HttpError, InputFile, InlineKeyboard} = require("grammy");
+
+const pendingDownloads = new Map();
 
 const bot = new Bot(process.env.BOT_API_KEY);
 bot.api.setMyCommands([
     {command: "start", description: "Start the bot"},   
         {command: "hello", description: "Say hello to the bot"},   
 
-])
+]).catch(e => console.log("Failed to set commands:", e.message));
 bot.command("start", async (ctx) => {
     await ctx.reply(`Hello, I am TubobubaBot! I help you to download videos from YouTube, Instagram and TikTok. Just send me a link to the video you want to download. To support the bot, you can buy me a coffee: ${process.env.BUY_ME_A_COFFEE_URL}`);
 });
@@ -20,6 +23,7 @@ bot.command("start", async (ctx) => {
 bot.on("message:voice", async (ctx) => {
     await ctx.reply("Voice messages are not supported yet. ");
 });
+
 bot.on("message:entities:url", async (ctx) => {
     const message = ctx.message;
     const text = message.text;
@@ -28,6 +32,7 @@ bot.on("message:entities:url", async (ctx) => {
     let validLinks = [];
     for (const entity of entities) {
         const url = text.substring(entity.offset, entity.offset + entity.length);
+       
         try {
             const parsedUrl = new URL(url);
             const hostname = parsedUrl.hostname.toLowerCase();
@@ -36,15 +41,16 @@ bot.on("message:entities:url", async (ctx) => {
                 validLinks.push({ url, hostname });
             }
         } catch (e) {
-            // Invalid URL, skip
+            await ctx.reply(`Invalid URL: ${url}`);
+
         }
     }
     
     if (validLinks.length > 0) {
-        const { url, hostname } = validLinks[0]; // Handle first link
+        const { url, hostname } = validLinks[0];
+
         console.log("Processing URL:", url, "from hostname:", hostname);
         if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-            await ctx.reply(`Processing YouTube video...`);
             try {
                 // Get video info
                 const info = await youtubedl(url, { dumpSingleJson: true, noDownload: true });
@@ -53,36 +59,26 @@ bot.on("message:entities:url", async (ctx) => {
                 const performer = info.uploader;
                 console.log("Video title:", title, "Duration:", duration, "Uploader:", performer);
 
-                const outputPath = path.join(__dirname, `output_${Date.now()}.mp3`);
-                console.log("Downloading video and extracting audio to:", outputPath);
-                await youtubedl(url, {
-                    extractAudio: true,
-                    audioFormat: 'mp3',
-                    audioQuality: '64K',
-                    output: outputPath
-                });
-
-
-                console.log("Download and extraction complete, sending audio...");
-                if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                    const fileSize = fs.statSync(outputPath).size;
-                    console.log("File size:", fileSize);
-                    if (fileSize > 50 * 1024 * 1024) { // 50 MB limit
-                        await ctx.reply("Audio file is too large to send (over 50MB).");
-                        fs.unlinkSync(outputPath);
-                        return;
-                    }
-                    const buffer = fs.readFileSync(outputPath);
-
-                    console.log("Audio file read successfully, sending to user...");
-                    const sanitizedTitle = title.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50); 
-                    await ctx.replyWithAudio(new InputFile(fs.createReadStream(outputPath), `${sanitizedTitle}.mp3`), { performer, title, caption: title });
-                    fs.unlinkSync(outputPath);
-                } else {
-                    await ctx.reply("Failed to download the audio file.");
-                }
+                pendingDownloads.set(ctx.from.id, { url, hostname, info, title, duration, performer });
+                const formatKeyboard = new InlineKeyboard()
+                    .text("🎵 Audio", "audio")
+                    .row()
+                    .text("🎥 Video 144p", "video_144")
+                    .row()
+                    .text("🎥 Video 260p", "video_260")
+                    .row()
+                    .text("🎥 Video 360p", "video_360")
+                    .row()
+                    .text("🎥 Video 480p", "video_480")
+                    .row()
+                    .text("🎥 Video 720p", "video_720")
+                    .row()
+                    .text("🎥 Video 1080p", "video_1080")
+                    .row()
+                    .text("❌ Cancel", "cancel");
+                await ctx.reply(`Choose the format you want to download for "${title}":`, { reply_markup: formatKeyboard });
             } catch (error) {
-                await ctx.reply("Error processing the video: " + error.message);
+                await ctx.reply("Error fetching video info: " + error.message);
             }
         } else {
             await ctx.reply("Downloading from Instagram or TikTok is not supported yet.");
@@ -101,8 +97,117 @@ bot.on("message:entities:url", async (ctx) => {
 //         await ctx.reply("Hello admin!")
 //     }
 // )
-bot.hears([/hello/i], async (ctx) => {
-    await ctx.reply("Hello there!");
+bot.on("callback_query", async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    const pending = pendingDownloads.get(ctx.from.id);
+    if (!pending) {
+        await ctx.answerCallbackQuery("No pending download.");
+        return;
+    }
+
+    await ctx.answerCallbackQuery(); // Acknowledge the callback
+    pendingDownloads.delete(ctx.from.id);
+
+    let format, resolution;
+    if (data === "audio") {
+        format = "audio";
+    } else if (data === "cancel") {
+        await ctx.reply("Download cancelled.");
+        return;
+    } else if (data.startsWith("video_")) {
+        format = "video";
+        resolution = data.split("_")[1];
+    } else {
+        await ctx.reply("Invalid choice.");
+        return;
+    }
+
+    const { url, info, title, performer } = pending;
+    await ctx.reply(`Processing YouTube ${format}${resolution ? ` ${resolution}p` : ''}...`);
+
+    try {
+        let outputPath;
+        if (format === "audio") {
+            outputPath = path.join(__dirname, `output_${Date.now()}.mp3`);
+            console.log("Downloading audio to:", outputPath);
+            await youtubedl(url, {
+                extractAudio: true,
+                audioFormat: 'mp3',
+                audioQuality: '64K',
+                output: outputPath
+            });
+        } else if (format === "video") {
+            outputPath = path.join(__dirname, `output_${Date.now()}.mp4`);
+            console.log("Downloading video to:", outputPath);
+            console.log(`Using format filter: bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`);
+            await youtubedl(url, {
+                output: outputPath,
+                // format: `best[height<=${resolution}]`
+                format: `bestvideo[height<=${resolution}]+bestaudio/best[height<=${resolution}]`
+            });
+        }
+
+        console.log("Download complete, sending file...");
+        // Find the actual downloaded file (yt-dlp may change extension)
+        const possibleFiles = fs.readdirSync(__dirname).filter(f => f.startsWith('output_') && (f.endsWith('.mp3') || f.endsWith('.mp4') || f.endsWith('.webm')));
+        if (possibleFiles.length === 0) {
+            await ctx.reply("Failed to download the file.");
+            return;
+        }
+        const actualOutputPath = path.join(__dirname, possibleFiles[0]);
+        console.log("Actual file path:", actualOutputPath);
+
+        try {
+            const stat = fs.statSync(actualOutputPath);
+            if (stat.size > 0) {
+                const fileSize = stat.size;
+                console.log("File size:", fileSize);
+                if (fileSize > 50 * 1024 * 1024) { // 50 MB limit
+                    console.log("File too large, splitting into parts...");
+                    const maxSize = 45 * 1024 * 1024;
+                    const numParts = Math.ceil(fileSize / maxSize);
+                    const segmentTime = Math.floor(duration / numParts);
+                    const baseName = path.basename(actualOutputPath, path.extname(actualOutputPath));
+                    const ext = path.extname(actualOutputPath);
+                    const segmentPattern = path.join(__dirname, `${baseName}_%03d${ext}`);
+                    execSync(`ffmpeg -i "${actualOutputPath}" -f segment -segment_time ${segmentTime} -c copy "${segmentPattern}"`);
+                    
+                    const parts = fs.readdirSync(__dirname)
+                        .filter(f => f.startsWith(baseName + '_') && f.endsWith(ext))
+                        .sort();
+                    
+                    for (let i = 0; i < parts.length; i++) {
+                        const partPath = path.join(__dirname, parts[i]);
+                        const partTitle = `${title} Part ${i + 1}`;
+                        const sanitizedPartTitle = partTitle.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50);
+                        if (format === "audio") {
+                            await ctx.replyWithAudio(new InputFile(fs.createReadStream(partPath), `${sanitizedPartTitle}.mp3`), { performer, title: partTitle, caption: partTitle });
+                        } else {
+                            await ctx.replyWithVideo(new InputFile(fs.createReadStream(partPath), `${sanitizedPartTitle}.mp4`), { caption: partTitle });
+                        }
+                        fs.unlinkSync(partPath);
+                    }
+                    fs.unlinkSync(actualOutputPath);
+                    return;
+                }
+
+                const sanitizedTitle = title.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50);
+                if (format === "audio") {
+                    await ctx.replyWithAudio(new InputFile(fs.createReadStream(actualOutputPath), `${sanitizedTitle}.mp3`), { performer, title, caption: title });
+                } else {
+                    await ctx.replyWithVideo(new InputFile(fs.createReadStream(actualOutputPath), `${sanitizedTitle}.mp4`), { caption: title });
+                }
+                fs.unlinkSync(actualOutputPath);
+            } else {
+                await ctx.reply("Downloaded file is empty.");
+            }
+        } catch (e) {
+            console.log("File processing error:", e.message);
+            await ctx.reply("Failed to process the file.");
+        }
+    } catch (error) {
+        await ctx.reply("Error processing the video: " + error.message);
+    }
 });
 bot.catch((err) => {
     const ctx = err.ctx;
