@@ -17,7 +17,7 @@ bot.api.setMyCommands([
 bot.command("start", async (ctx) => {
     await ctx.reply(`Hello, I am TubobubaBot! I help you to download videos from YouTube, Instagram and TikTok. Just send me a link to the video you want to download. To support the bot, you can buy me a coffee: ${process.env.BUY_ME_A_COFFEE_URL}`);
 });
-
+let messagesIds = [];
 
 
 bot.on("message:voice", async (ctx) => {
@@ -76,7 +76,8 @@ bot.on("message:entities:url", async (ctx) => {
                     .text("🎥 Video 1080p", "video_1080")
                     .row()
                     .text("❌ Cancel", "cancel");
-                await ctx.reply(`Choose the format you want to download for "${title}":`, { reply_markup: formatKeyboard });
+                const messageId = await ctx.reply(`Choose the format you want to download for "${title}":`, { reply_markup: formatKeyboard });
+                messagesIds.push(messageId.message_id);
             } catch (error) {
                 await ctx.reply("Error fetching video info: " + error.message);
             }
@@ -106,7 +107,9 @@ bot.on("callback_query", async (ctx) => {
     }
 
     await ctx.answerCallbackQuery(); // Acknowledge the callback
-    pendingDownloads.delete(ctx.from.id);
+
+    const { url, info, title, performer, duration } = pending;
+    pendingDownloads.delete(ctx.from.id);    
 
     let format, resolution;
     if (data === "audio") {
@@ -121,9 +124,8 @@ bot.on("callback_query", async (ctx) => {
         await ctx.reply("Invalid choice.");
         return;
     }
-
-    const { url, info, title, performer, duration } = pending;
-    await ctx.reply(`Processing YouTube ${format}${resolution ? ` ${resolution}p` : ''}...`);
+    const processingMessage = await ctx.reply(`Processing YouTube ${format}${resolution ? ` ${resolution}p` : ''}...`);
+    messagesIds.push(processingMessage.message_id);
 
     try {
         let outputPath;
@@ -207,6 +209,17 @@ bot.on("callback_query", async (ctx) => {
     } catch (error) {
         await ctx.reply("Error processing the video: " + error.message);
     }
+    
+
+    try {
+        for (const messageId of messagesIds) {
+            await ctx.api.deleteMessage(ctx.chat.id, messageId);
+        }
+      
+    } catch (e) {
+        console.log("Failed to delete message:", e.message);
+    }
+    messagesIds = []; 
 });
 bot.catch((err) => {
     const ctx = err.ctx;
