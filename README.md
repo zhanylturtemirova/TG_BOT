@@ -169,7 +169,7 @@ Add any required npm packages for the new platform to `package.json`.
 ## Installation & Setup
 
 1. Clone the repository
-2. Install dependencies: `npm install`
+2. Run the setup script: `./setup.sh`
 3. Create `.env` file with your bot token
 4. Run: `npm start`
 
@@ -177,6 +177,62 @@ Add any required npm packages for the new platform to `package.json`.
 
 - `BOT_API_KEY`: Your Telegram bot token
 - `BUY_ME_A_COFFEE_URL`: Optional donation link
+
+## Troubleshooting YouTube Issues
+
+### Common Errors and Solutions
+
+#### 1. HTTP Error 429: Too Many Requests
+**Cause**: YouTube rate limiting
+**Solutions**:
+- Wait 5-10 minutes before trying again
+- Add YouTube cookies (see below)
+- The bot automatically retries with exponential backoff
+
+#### 2. "Sign in to confirm you're not a bot"
+**Cause**: YouTube bot detection
+**Solution**: Add YouTube cookies
+```bash
+# Export cookies from your browser
+yt-dlp --cookies-from-browser chrome --cookies cookies.txt
+# Or manually create cookies.txt with YouTube session cookies
+```
+
+#### 3. "No supported JavaScript runtime"
+**Cause**: Missing JavaScript runtime for yt-dlp
+**Solutions**:
+- Install Deno: `brew install deno`
+- Or the setup script will handle this automatically
+
+#### 4. "Unable to download webpage"
+**Cause**: Network issues or geo-blocking
+**Solutions**:
+- Check your internet connection
+- Try using a VPN
+- The bot uses geo-bypass options automatically
+
+### Manual Setup (if setup.sh doesn't work)
+
+```bash
+# Install dependencies
+brew install deno yt-dlp ffmpeg
+
+# Install Node.js dependencies
+npm install
+
+# Create temp directory
+mkdir temp
+
+# Create .env file
+echo "BOT_API_KEY=your_bot_token_here" > .env
+```
+
+### Performance Tips
+
+- **Rate Limiting**: The bot includes automatic retry logic with exponential backoff
+- **Caching**: Consider adding Redis for caching video info
+- **Concurrent Downloads**: Currently processes one download at a time per user
+- **File Cleanup**: Temporary files are automatically cleaned up
 
 ## Usage
 
