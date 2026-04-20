@@ -151,15 +151,15 @@ bot.on("callback_query", async (ctx) => {
                 const partPath = result.filePaths[i];
                 const partTitle = `${info.title} Part ${i + 1}`;
                 const sanitizedPartTitle = partTitle.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50);
+                const actualExt = path.extname(partPath);
 
                 if (format === "audio") {
                     await ctx.replyWithAudio(
-                        new InputFile(fs.createReadStream(partPath), `${sanitizedPartTitle}.mp3`),
+                        new InputFile(fs.createReadStream(partPath), `${sanitizedPartTitle}${actualExt}`),
                         { performer: info.uploader, title: partTitle, caption: partTitle }
                     );
                 } else {
                     await ctx.replyWithVideo(
-                        new InputFile(fs.createReadStream(partPath), `${sanitizedPartTitle}.mp4`),
                         { caption: partTitle }
                     );
                 }
@@ -168,15 +168,16 @@ bot.on("callback_query", async (ctx) => {
         } else {
             // Handle single file
             const sanitizedTitle = info.title.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50);
+            const actualExt = path.extname(result.filePath);
 
             if (format === "audio") {
                 await ctx.replyWithAudio(
-                    new InputFile(fs.createReadStream(result.filePath), `${sanitizedTitle}.mp3`),
+                    new InputFile(fs.createReadStream(result.filePath), `${sanitizedTitle}${actualExt}`),
                     { performer: info.uploader, title: info.title, caption: info.title }
                 );
             } else {
                 await ctx.replyWithVideo(
-                    new InputFile(fs.createReadStream(result.filePath), `${sanitizedTitle}.mp4`),
+                    new InputFile(fs.createReadStream(result.filePath), `${sanitizedTitle}${actualExt}`),
                     { performer: info.uploader, title: info.title, caption: info.title }
                 );
             }

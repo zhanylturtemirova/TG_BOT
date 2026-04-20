@@ -2,52 +2,109 @@ const BaseDownloader = require('./BaseDownloader');
 
 class InstagramDownloader extends BaseDownloader {
     async getInfo() {
-        try {
-            // For now, using youtube-dl-exec which supports Instagram
-            const youtubedl = require('youtube-dl-exec');
-            const info = await youtubedl(this.url, {
-                dumpSingleJson: true,
-                noDownload: true
-            });
+        const maxRetries = 3;
+        let lastError;
 
-            return {
-                title: info.title || 'Instagram Video',
-                duration: info.duration,
-                uploader: info.uploader || 'Instagram User',
-                platform: 'Instagram',
-                thumbnail: info.thumbnail,
-                description: info.description || '',
-                viewCount: info.view_count,
-                uploadDate: info.upload_date
-            };
-        } catch (error) {
-            throw new Error(`Failed to get Instagram video info: ${error.message}`);
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`Attempting to get Instagram info (attempt ${attempt}/${maxRetries})`);
+
+                // For now, using youtube-dl-exec which supports Instagram
+                const youtubedl = require('youtube-dl-exec');
+                const info = await youtubedl(this.url, {
+                    dumpSingleJson: true,
+                    noDownload: true,
+                    addHeader: [
+                        'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    ],
+                    forceIpv4: true,
+                    retrySleep: 2,
+                    sleepInterval: 1,
+                    maxSleepInterval: 5
+                });
+
+                return {
+                    title: info.title || 'Instagram Video',
+                    duration: info.duration,
+                    uploader: info.uploader || 'Instagram User',
+                    platform: 'Instagram',
+                    thumbnail: info.thumbnail,
+                    description: info.description || '',
+                    viewCount: info.view_count,
+                    uploadDate: info.upload_date
+                };
+
+            } catch (error) {
+                lastError = error;
+                console.log(`Instagram info attempt ${attempt} failed:`, error.message);
+
+                if (attempt < maxRetries) {
+                    const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                    console.log(`Waiting ${waitTime}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+            }
         }
+
+        throw new Error(`Failed to get Instagram video info after ${maxRetries} attempts: ${lastError.message}`);
     }
 
     async download(outputPath, options = {}) {
         const { format } = options;
+        const maxRetries = 3;
+        let lastError;
 
-        try {
-            const youtubedl = require('youtube-dl-exec');
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`Attempting to download Instagram content (attempt ${attempt}/${maxRetries})`);
 
-            if (format === 'audio') {
-                await youtubedl(this.url, {
-                    extractAudio: true,
-                    audioFormat: 'mp3',
-                    audioQuality: '64K',
-                    output: outputPath
-                });
-            } else if (format === 'video') {
-                // Instagram videos are typically high quality, download best available
-                await youtubedl(this.url, {
-                    output: outputPath,
-                    format: 'best'
-                });
+                const youtubedl = require('youtube-dl-exec');
+
+                if (format === 'audio') {
+                    await youtubedl(this.url, {
+                        extractAudio: true,
+                        audioFormat: 'mp3',
+                        audioQuality: '64K',
+                        output: outputPath,
+                        addHeader: [
+                            'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        ],
+                        forceIpv4: true,
+                        retrySleep: 2,
+                        sleepInterval: 1,
+                        maxSleepInterval: 5
+                    });
+                } else if (format === 'video') {
+                    // Instagram videos are typically high quality, download best available
+                    await youtubedl(this.url, {
+                        output: outputPath,
+                        format: 'best[ext=mp4]/best',
+                        mergeOutputFormat: 'mp4',
+                        addHeader: [
+                            'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        ],
+                        forceIpv4: true,
+                        retrySleep: 2,
+                        sleepInterval: 1,
+                        maxSleepInterval: 5
+                    });
+                }
+
+                return;
+
+            } catch (error) {
+                lastError = error;
+                console.log(`Instagram download attempt ${attempt} failed:`, error.message);
+
+                if (attempt < maxRetries) {
+                    const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 15000);
+                    console.log(`Waiting ${waitTime}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
             }
-        } catch (error) {
-            throw new Error(`Failed to download Instagram video: ${error.message}`);
         }
+
+        throw new Error(`Failed to download Instagram video after ${maxRetries} attempts: ${lastError.message}`);
     }
 
     getSupportedFormats() {

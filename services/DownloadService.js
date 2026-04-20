@@ -41,8 +41,22 @@ class DownloadService {
             // Download the content
             await downloader.download(outputPath, { format, resolution });
 
+            // Find the actual downloaded file (yt-dlp may change extension)
+            const tempDir = path.dirname(outputPath);
+            const baseName = path.basename(outputPath, path.extname(outputPath));
+            const possibleFiles = (await fs.readdir(tempDir))
+                .filter(f => f.startsWith(baseName) && (f.endsWith('.mp3') || f.endsWith('.mp4') || f.endsWith('.webm') || f.endsWith('.m4a')))
+                .map(f => path.join(tempDir, f));
+
+            if (possibleFiles.length === 0) {
+                throw new Error('Downloaded file not found');
+            }
+
+            const actualOutputPath = possibleFiles[0];
+            console.log("Actual downloaded file path:", actualOutputPath);
+
             // Verify file exists and has content
-            const stats = await fs.stat(outputPath);
+            const stats = await fs.stat(actualOutputPath);
             if (stats.size === 0) {
                 throw new Error('Downloaded file is empty');
             }
@@ -50,18 +64,18 @@ class DownloadService {
             // Check file size limit
             if (stats.size > config.maxFileSize) {
                 // Handle large files (split into parts)
-                return await this.handleLargeFile(outputPath, downloader, config, format);
+                return await this.handleLargeFile(actualOutputPath, downloader, config, format);
             }
 
             this.activeDownloads.set(downloadId, {
                 status: 'completed',
-                filePath: outputPath,
+                filePath: actualOutputPath,
                 fileSize: stats.size,
                 endTime: Date.now()
             });
 
             return {
-                filePath: outputPath,
+                filePath: actualOutputPath,
                 fileSize: stats.size,
                 needsSplit: false
             };
