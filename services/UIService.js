@@ -112,9 +112,7 @@ class UIService {
         } else {
             message += 'Download Failed';
         }
-
-        message += `\n\n${error}`;
-
+        console.error('Error details:', error);
         return message;
     }
 
