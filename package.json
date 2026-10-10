@@ -9,6 +9,8 @@
     "setup": "./setup.sh",
     "test": "node --check index.js && node --test test/*.test.js",
     "update:yt-dlp": "node scripts/update-ytdlp.js",
+    "bot-api:start": "node scripts/start-bot-api.js",
+    "bot-api:switch": "node scripts/switch-bot-api.js",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.js"
   },
   "keywords": [],
