@@ -1,243 +1,125 @@
-# TubobubaBot - Multi-Platform Video Downloader
+# TubobubaBot
 
-A Telegram bot that can download videos from multiple social media platforms including YouTube, Instagram, and TikTok.
+Telegram-бот для скачивания видео и MP3 из YouTube, Instagram и TikTok.
 
-## Architecture Overview
+## Запуск
 
-This bot uses a modular, extensible architecture that makes it easy to add support for new platforms.
-
-### Core Components
-
-#### 1. Downloaders (`/downloaders/`)
-Each platform has its own downloader class that extends `BaseDownloader`:
-
-- **BaseDownloader.js**: Abstract base class defining the interface
-- **YouTubeDownloader.js**: Handles YouTube videos
-- **InstagramDownloader.js**: Handles Instagram videos
-- **TikTokDownloader.js**: Handles TikTok videos
-
-#### 2. Services (`/services/`)
-- **DownloadService.js**: Handles the download process, file management, and cleanup
-- **UIService.js**: Manages UI elements like keyboards and messages
-
-#### 3. Configuration (`/config/`)
-- **platforms.js**: Platform-specific settings and capabilities
-
-#### 4. Factory Pattern
-- **DownloaderFactory.js**: Creates appropriate downloader instances based on URL
-
-## Adding a New Platform
-
-To add support for a new platform (e.g., Twitter/X), follow these steps:
-
-### 1. Create a Downloader Class
-
-```javascript
-// downloaders/TwitterDownloader.js
-const BaseDownloader = require('./BaseDownloader');
-
-class TwitterDownloader extends BaseDownloader {
-    async getInfo() {
-        // Implement platform-specific info extraction
-        const info = await this.fetchVideoInfo();
-        return {
-            title: info.title,
-            duration: info.duration,
-            uploader: info.author,
-            platform: 'Twitter',
-            // ... other metadata
-        };
-    }
-
-    async download(outputPath, options = {}) {
-        // Implement download logic
-        const { format } = options;
-        // Download logic here
-    }
-
-    getSupportedFormats() {
-        return ['video']; // Twitter might only support video
-    }
-
-    getVideoResolutions() {
-        return ['best'];
-    }
-}
-
-module.exports = TwitterDownloader;
-```
-
-### 2. Update the Factory
-
-```javascript
-// downloaders/DownloaderFactory.js
-const TwitterDownloader = require('./TwitterDownloader');
-
-static createDownloader(url) {
-    const hostname = new URL(url).hostname.toLowerCase();
-
-    if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-        return new YouTubeDownloader(url);
-    } else if (hostname.includes('instagram.com')) {
-        return new InstagramDownloader(url);
-    } else if (hostname.includes('tiktok.com')) {
-        return new TikTokDownloader(url);
-    } else if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-        return new TwitterDownloader(url); // New platform
-    } else {
-        throw new Error(`Unsupported platform: ${hostname}`);
-    }
-}
-
-static getSupportedPlatforms() {
-    return [
-        { name: 'YouTube', domains: ['youtube.com', 'youtu.be'] },
-        { name: 'Instagram', domains: ['instagram.com'] },
-        { name: 'TikTok', domains: ['tiktok.com'] },
-        { name: 'Twitter', domains: ['twitter.com', 'x.com'] } // New platform
-    ];
-}
-```
-
-### 3. Add Platform Configuration
-
-```javascript
-// config/platforms.js
-twitter: {
-    name: 'Twitter',
-    maxFileSize: 50 * 1024 * 1024,
-    supportedFormats: ['video'],
-    videoResolutions: ['best'],
-    audioQuality: '64K',
-    audioFormat: 'mp3'
-}
-```
-
-### 4. Update Dependencies
-
-Add any required npm packages for the new platform to `package.json`.
-
-## Best Practices Implemented
-
-### 1. **Strategy Pattern**
-- Each platform implements the same interface
-- Easy to swap implementations
-- Consistent behavior across platforms
-
-### 2. **Factory Pattern**
-- Centralized platform detection and instantiation
-- Easy to add new platforms without modifying existing code
-
-### 3. **Configuration-Driven Design**
-- Platform capabilities defined in config files
-- Easy to modify behavior without code changes
-
-### 4. **Error Handling**
-- Platform-specific error messages
-- Graceful degradation
-- Comprehensive logging
-
-### 5. **Resource Management**
-- Automatic cleanup of temporary files
-- Memory-efficient streaming
-- Periodic cleanup of old downloads
-
-### 6. **Modular Architecture**
-- Separation of concerns
-- Single responsibility principle
-- Easy to test and maintain
-
-## Features
-
-- ✅ Multi-platform support (YouTube, Instagram, TikTok)
-- ✅ Audio and video downloads
-- ✅ Automatic file splitting for large files
-- ✅ Message cleanup
-- ✅ User-friendly error messages
-- ✅ Configurable quality options
-- ✅ Automatic cleanup
-
-## Future Enhancements
-
-- Add more platforms (Twitter, Facebook, etc.)
-- Implement rate limiting
-- Add download progress indicators
-- Support for playlists/channels
-- User preferences and history
-- Admin panel for monitoring
-
-## Installation & Setup
-
-1. Clone the repository
-2. Run the setup script: `./setup.sh`
-3. Create `.env` file with your bot token
-4. Run: `npm start`
-
-## Environment Variables
-
-- `BOT_API_KEY`: Your Telegram bot token
-- `BUY_ME_A_COFFEE_URL`: Optional donation link
-
-## Troubleshooting YouTube Issues
-
-### Common Errors and Solutions
-
-#### 1. HTTP Error 429: Too Many Requests
-**Cause**: YouTube rate limiting
-**Solutions**:
-- Wait 5-10 minutes before trying again
-- Add YouTube cookies (see below)
-- The bot automatically retries with exponential backoff
-
-#### 2. "Sign in to confirm you're not a bot"
-**Cause**: YouTube bot detection
-**Solution**: Add YouTube cookies
-```bash
-# Export cookies from your browser
-yt-dlp --cookies-from-browser chrome --cookies cookies.txt
-# Or manually create cookies.txt with YouTube session cookies
-```
-
-#### 3. "No supported JavaScript runtime"
-**Cause**: Missing JavaScript runtime for yt-dlp
-**Solutions**:
-- Install Deno: `brew install deno`
-- Or the setup script will handle this automatically
-
-#### 4. "Unable to download webpage"
-**Cause**: Network issues or geo-blocking
-**Solutions**:
-- Check your internet connection
-- Try using a VPN
-- The bot uses geo-bypass options automatically
-
-### Manual Setup (if setup.sh doesn't work)
+Нужны Node.js 22+ и ffmpeg (включая ffprobe). На macOS:
 
 ```bash
-# Install dependencies
-brew install deno yt-dlp ffmpeg
-
-# Install Node.js dependencies
+brew install ffmpeg
 npm install
-
-# Create temp directory
-mkdir temp
-
-# Create .env file
-echo "BOT_API_KEY=your_bot_token_here" > .env
+cp .env.example .env   # Только если .env ещё нет
 ```
 
-### Performance Tips
+Укажите `BOT_API_KEY` в `.env`, затем:
 
-- **Rate Limiting**: The bot includes automatic retry logic with exponential backoff
-- **Caching**: Consider adding Redis for caching video info
-- **Concurrent Downloads**: Currently processes one download at a time per user
-- **File Cleanup**: Temporary files are automatically cleaned up
+```bash
+npm start
+```
 
-## Usage
+Если бот уже запущен, остановите старый процесс перед повторным запуском.
+`npm run setup` устанавливает зависимости на macOS. `npm test` запускает проверки без сети и Telegram.
 
-Send a video link from supported platforms to the bot, and it will process and send the audio/video file back.
+## Качество и аудио
 
-## License
+- YouTube: 144p, 240p, 360p, 480p, 720p, 1080p или лучшее доступное качество.
+- Выбранное разрешение — верхняя граница. Если такого формата нет, загрузчик выбирает доступный ниже; он больше не переключается незаметно на качество выше выбранного.
+- Instagram/TikTok: лучшее доступное видео.
+- Для всех платформ доступна отдельная MP3-дорожка.
+- Видео и звук YouTube объединяет ffmpeg. Без ffmpeg скачивание отдельных потоков и преобразование в MP3 не работают.
+- Для карусели Instagram скачивается первый элемент; если он не содержит видео, бот сообщает об этом. Массовое скачивание каруселей не реализовано.
 
-ISC
+## Instagram и yt-dlp
+
+Бот запускает встроенный в `youtube-dl-exec` бинарник yt-dlp через `execFile`, передавая путь и аргументы отдельно. Это исправляет сбой библиотеки tinyspawn в папках с пробелами, например `untitled folder`: раньше запуск обрывался с ENOENT, а библиотека заменяла причину на `Error`.
+
+Обновлять нужно именно используемый ботом бинарник:
+
+```bash
+npm run update:yt-dlp
+```
+
+При необходимости задайте `YT_DLP_PATH` — полный путь к своему yt-dlp. Путь к папке ffmpeg можно задать через `FFMPEG_LOCATION`; стандартные каталоги Homebrew обнаруживаются автоматически.
+
+Публичные ссылки могут работать без входа. Если Instagram требует авторизацию, укажите `INSTAGRAM_COOKIES_FILE` с Netscape cookies от аккаунта, которому доступен ролик. Подробнее: [COOKIES_README.md](COOKIES_README.md). Приватные, удалённые и недоступные аккаунту публикации не становятся доступными от одного изменения кода.
+
+## Большие файлы одним сообщением
+
+Обычный сервер `api.telegram.org` принимает новые файлы до **50 МБ**. Собственный сервер **Telegram Bot API**, запущенный с `--local`, принимает до **2000 МБ**. Это относится и к видео, и к MP3; отправка как документ через обычный API не отменяет лимит.
+
+Источники: [загрузка файлов](https://core.telegram.org/bots/api#sending-files), [локальный Bot API](https://core.telegram.org/bots/api#using-a-local-bot-api-server).
+
+Бот больше не разрезает файлы автоматически. Если файл превышает лимит текущего сервера, он предлагает выбрать качество ниже или аудио. Изменение одного числа в коде не увеличивает лимит Telegram.
+
+Для включения режима до 2000 МБ:
+
+1. Установите официальный [telegram-bot-api](https://github.com/tdlib/telegram-bot-api#installation). Получите свои `api_id` и `api_hash` по [инструкции Telegram](https://core.telegram.org/api/obtaining_api_id). Это отдельные параметры, не токен BotFather.
+2. Передайте серверу `TELEGRAM_API_ID` и `TELEGRAM_API_HASH` через окружение и запустите его на том же компьютере:
+
+```bash
+telegram-bot-api --local --http-ip-address=127.0.0.1 --http-port=8081
+```
+
+3. Остановите работающий бот. Перед первым переходом вызовите `logOut` на облачном сервере. Команда ниже читает токен из `.env` и не печатает его:
+
+```bash
+node - <<'JS'
+require('dotenv').config({ quiet: true });
+const { Api } = require('grammy');
+new Api(process.env.BOT_API_KEY).logOut()
+  .then(() => console.log('Cloud Bot API logged out'))
+  .catch(() => { console.error('logOut failed'); process.exitCode = 1; });
+JS
+```
+
+После `logOut` вернуться на облачный сервер нельзя в течение 10 минут. Выполняйте эту команду только при готовом локальном сервере.
+
+4. Добавьте в `.env` и запустите бот:
+
+```dotenv
+TELEGRAM_API_ROOT=http://127.0.0.1:8081
+TELEGRAM_LOCAL_MODE=true
+```
+
+```bash
+npm start
+```
+
+Обе настройки обязательны. Сервер должен действительно работать с `--local`. Бот отправляет файлы потоком через multipart, поэтому общая файловая система с сервером не нужна. При использовании прокси проверьте его лимит тела запроса и таймаут загрузки; для удалённого сервера используйте HTTPS.
+
+По умолчанию остаётся облачный API и лимит 50 МБ. В этом проекте локальный сервер автоматически не разворачивается и переход через `logOut` не выполняется.
+
+## Как объединить ранее скачанные части
+
+Если части одного ролика получены старой версией бота и имеют одинаковые кодеки, сохраните их в папку и создайте `parts.txt` в нужном порядке:
+
+```text
+file 'part1.mp4'
+file 'part2.mp4'
+file 'part3.mp4'
+```
+
+В этой папке выполните:
+
+```bash
+ffmpeg -f concat -safe 0 -i parts.txt -c copy combined.mp4
+```
+
+Объединение не отменяет лимит отправки Telegram. Для новых скачиваний локальный API позволяет отправлять исходное цельное видео без предварительного разрезания.
+
+## Структура
+
+- `downloaders/`: загрузчики платформ и фабрика.
+- `services/YtDlp.js`: безопасный запуск процесса, диагностика и пути cookies.
+- `services/DownloadService.js`: отдельный временный каталог на скачивание, проверка размера и очистка в том числе после ошибок.
+- `services/DownloadQueue.js`: очередь загрузок.
+- `services/UIService.js`: меню и сообщения.
+- `config/telegram.js`: адрес API, лимит загрузки и таймаут.
+- `config/platforms.js`: форматы и разрешения.
+
+## Проверка исправления
+
+На присланном ролике Instagram `DdOyq0Vxhs6` проверены анонимное извлечение информации, скачивание MP4 с H.264/AAC и извлечение MP3. Проверки выполняются локально, без отправки сообщений пользователям Telegram.
+
+Автотесты проверяют пробелы в пути бинарника, сохранение ошибок загрузчика, передачу качества и cookies, ограничения облачного и локального режима и очистку временных файлов. Полная отправка через локальный Bot API требует отдельно запущенного сервера.

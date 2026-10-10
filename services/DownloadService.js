@@ -1,176 +1,73 @@
-const fs = require('fs').promises;
-const path = require('path');
-const { execSync } = require('child_process');
-const { platformConfig, botConfig } = require('../config/platforms');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const { platformConfig } = require('../config/platforms');
+const { getTelegramConfig } = require('../config/telegram');
 
 class DownloadService {
-    constructor() {
+    constructor(telegram = getTelegramConfig()) {
+        this.telegram = telegram;
         this.activeDownloads = new Map();
     }
 
     async downloadContent(downloader, format, resolution = null, userId) {
-        const downloadId = `${userId}_${Date.now()}`;
-        this.activeDownloads.set(downloadId, { status: 'processing', startTime: Date.now() });
+        const platform = downloader.constructor.name.toLowerCase().replace('downloader', '');
+        const config = platformConfig[platform];
+        if (!config || !config.supportedFormats.includes(format)) {
+            throw new Error(`Unsupported download format: ${format}`);
+        }
+        resolution ||= 'best';
+        if (format === 'video' && !config.videoResolutions.includes(resolution)) {
+            throw new Error(`Unsupported resolution: ${resolution}`);
+        }
 
+        const tempDir = path.resolve(__dirname, '../temp');
+        await fs.mkdir(tempDir, { recursive: true });
+        const workDir = await fs.mkdtemp(path.join(tempDir, `${userId}_`));
+        const downloadId = path.basename(workDir);
+        this.activeDownloads.set(downloadId, { workDir, status: 'processing', startTime: Date.now() });
         try {
-            // Get platform config
-            const platform = downloader.constructor.name.toLowerCase().replace('downloader', '');
-            const config = platformConfig[platform];
-
-            if (!config) {
-                throw new Error(`Configuration not found for platform: ${platform}`);
-            }
-
-            // Validate format
-            if (!config.supportedFormats.includes(format)) {
-                throw new Error(`Format ${format} not supported for ${config.name}`);
-            }
-
-            // Validate resolution for video
-            if (format === 'video' && resolution && !config.videoResolutions.includes(resolution)) {
-                throw new Error(`Resolution ${resolution}p not supported for ${config.name}`);
-            }
-
-            // Create output path
             const extension = format === 'audio' ? config.audioFormat : 'mp4';
-            const outputPath = path.join(__dirname, `../temp/output_${downloadId}.${extension}`);
-
-            // Ensure temp directory exists
-            await fs.mkdir(path.dirname(outputPath), { recursive: true });
-
-            // Download the content
+            const outputPath = path.join(workDir, `output.${extension}`);
             await downloader.download(outputPath, { format, resolution });
 
-            // Find the actual downloaded file (yt-dlp may change extension)
-            const tempDir = path.dirname(outputPath);
-            const baseName = path.basename(outputPath, path.extname(outputPath));
-            const possibleFiles = (await fs.readdir(tempDir))
-                .filter(f => f.startsWith(baseName) && (f.endsWith('.mp3') || f.endsWith('.mp4') || f.endsWith('.webm') || f.endsWith('.m4a')))
-                .map(f => path.join(tempDir, f));
-
-            if (possibleFiles.length === 0) {
-                throw new Error('Downloaded file not found');
-            }
-
-            const actualOutputPath = possibleFiles[0];
-            console.log("Actual downloaded file path:", actualOutputPath);
-
-            // Verify file exists and has content
-            const stats = await fs.stat(actualOutputPath);
-            if (stats.size === 0) {
-                throw new Error('Downloaded file is empty');
-            }
-
-            // Check file size limit
-            if (stats.size > config.maxFileSize) {
-                // Handle large files (split into parts)
-                return await this.handleLargeFile(actualOutputPath, downloader, config, format);
+            // Ignore intermediate .f123.mp4 streams and unfinished .part downloads.
+            const files = (await fs.readdir(workDir)).filter(file => /^output\.(mp3|mp4|webm|m4a|mkv)$/.test(file));
+            const actualFile = files.includes(`output.${extension}`) ? `output.${extension}` : files[0];
+            if (!actualFile) throw new Error('Downloaded file not found');
+            const filePath = path.join(workDir, actualFile);
+            const { size } = await fs.stat(filePath);
+            if (!size) throw new Error('Downloaded file is empty');
+            if (size > this.telegram.maxFileSize) {
+                const error = new Error(this.telegram.local
+                    ? 'Файл больше 2000 МБ — лимита локального Telegram Bot API. Выберите качество ниже или только аудио.'
+                    : 'Файл больше 50 МБ — лимита обычного Telegram Bot API. Выберите качество ниже или только аудио. Для отправки одним файлом до 2000 МБ нужен локальный сервер Bot API.');
+                error.code = 'FILE_TOO_LARGE';
+                throw error;
             }
 
             this.activeDownloads.set(downloadId, {
-                status: 'completed',
-                filePath: actualOutputPath,
-                fileSize: stats.size,
-                endTime: Date.now()
+                ...this.activeDownloads.get(downloadId), status: 'sending', filePath, fileSize: size
             });
-
-            return {
-                filePath: actualOutputPath,
-                fileSize: stats.size,
-                needsSplit: false
-            };
-
+            return { downloadId, filePath, fileSize: size, needsSplit: false };
         } catch (error) {
-            this.activeDownloads.set(downloadId, {
-                status: 'failed',
-                error: error.message,
-                endTime: Date.now()
-            });
+            await this.cleanup(downloadId);
             throw error;
-        }
-    }
-
-    async handleLargeFile(outputPath, downloader, config, format) {
-        try {
-            const stats = await fs.stat(outputPath);
-            const maxSize = 45 * 1024 * 1024; // 45MB per part
-            const numParts = Math.ceil(stats.size / maxSize);
-
-            // Get video info for duration (if available)
-            let duration = 0;
-            try {
-                const info = await downloader.getInfo();
-                duration = info.duration || 0;
-            } catch (e) {
-                console.log('Could not get duration for splitting:', e.message);
-            }
-
-            const segmentTime = duration > 0 ? Math.floor(duration / numParts) : 30; // Default 30s segments
-            const baseName = path.basename(outputPath, path.extname(outputPath));
-            const ext = path.extname(outputPath);
-            const segmentPattern = path.join(path.dirname(outputPath), `${baseName}_%03d${ext}`);
-
-            // Split the file using ffmpeg
-            execSync(`ffmpeg -i "${outputPath}" -f segment -segment_time ${segmentTime} -c copy "${segmentPattern}"`);
-
-            // Get all parts
-            const dir = path.dirname(outputPath);
-            const parts = (await fs.readdir(dir))
-                .filter(f => f.startsWith(baseName + '_') && f.endsWith(ext))
-                .sort()
-                .map(f => path.join(dir, f));
-
-            // Clean up original file
-            await fs.unlink(outputPath);
-
-            return {
-                filePaths: parts,
-                needsSplit: true,
-                totalParts: parts.length
-            };
-
-        } catch (error) {
-            throw new Error(`Failed to split large file: ${error.message}`);
         }
     }
 
     async cleanup(downloadId) {
         const download = this.activeDownloads.get(downloadId);
-        if (download && download.filePath) {
-            try {
-                if (Array.isArray(download.filePath)) {
-                    // Multiple files (split parts)
-                    for (const filePath of download.filePath) {
-                        await fs.unlink(filePath);
-                    }
-                } else {
-                    // Single file
-                    await fs.unlink(download.filePath);
-                }
-            } catch (error) {
-                console.log(`Failed to cleanup files for ${downloadId}:`, error.message);
-            }
-        }
+        if (!download) return;
+        await fs.rm(download.workDir, { recursive: true, force: true });
         this.activeDownloads.delete(downloadId);
     }
 
     getActiveDownloads(userId) {
-        return Array.from(this.activeDownloads.entries())
+        return [...this.activeDownloads.entries()]
             .filter(([key]) => key.startsWith(`${userId}_`))
-            .map(([key, value]) => ({ id: key, ...value }));
-    }
-
-    // Periodic cleanup of old downloads
-    async periodicCleanup() {
-        const now = Date.now();
-        const maxAge = botConfig.cleanupInterval; // 1 hour
-
-        for (const [downloadId, download] of this.activeDownloads.entries()) {
-            if (now - download.startTime > maxAge) {
-                await this.cleanup(downloadId);
-            }
-        }
+            .map(([id, value]) => ({ id, ...value }));
     }
 }
 
 module.exports = new DownloadService();
+module.exports.DownloadService = DownloadService;

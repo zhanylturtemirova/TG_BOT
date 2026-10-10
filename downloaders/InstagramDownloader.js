@@ -1,19 +1,29 @@
 const BaseDownloader = require('./BaseDownloader');
+const { cookieOptions } = require('../services/YtDlp');
 
 class InstagramDownloader extends BaseDownloader {
     async getInfo() {
         const maxRetries = 3;
         let lastError;
 
+        const extractErrorText = (error) => {
+            if (!error) return 'Unknown Instagram fetch error';
+            const message = error.message || String(error);
+            return message.trim() || 'Unknown Instagram fetch error';
+        };
+
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 console.log(`Attempting to get Instagram info (attempt ${attempt}/${maxRetries})`);
 
                 // For now, using youtube-dl-exec which supports Instagram
-                const youtubedl = require('youtube-dl-exec');
-                const info = await youtubedl(this.url, {
+                const youtubedl = require('../services/YtDlp');
+                const extracted = await youtubedl(this.url, {
+                    ...cookieOptions('instagram'),
+                    playlistItems: '1',
                     dumpSingleJson: true,
-                    noDownload: true,
+                    skipDownload: true,
+                    noPlaylist: true,
                     addHeader: [
                         'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     ],
@@ -22,6 +32,11 @@ class InstagramDownloader extends BaseDownloader {
                     sleepInterval: 1,
                     maxSleepInterval: 5
                 });
+
+                const info = extracted.entries ? extracted.entries.find(Boolean) : extracted;
+                if (!info || (!info.url && !info.formats?.length)) {
+                    throw new Error('Instagram: the selected post does not contain a downloadable video.');
+                }
 
                 return {
                     title: info.title || 'Instagram Video',
@@ -36,7 +51,7 @@ class InstagramDownloader extends BaseDownloader {
 
             } catch (error) {
                 lastError = error;
-                console.log(`Instagram info attempt ${attempt} failed:`, error.message);
+                console.log(`Instagram info attempt ${attempt} failed:`, extractErrorText(error));
 
                 if (attempt < maxRetries) {
                     const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
@@ -46,7 +61,10 @@ class InstagramDownloader extends BaseDownloader {
             }
         }
 
-        throw new Error(`Failed to get Instagram video info after ${maxRetries} attempts: ${lastError.message}`);
+        const details = extractErrorText(lastError);
+        throw new Error(
+            `Instagram: ${details}`
+        );
     }
 
     async download(outputPath, options = {}) {
@@ -58,10 +76,13 @@ class InstagramDownloader extends BaseDownloader {
             try {
                 console.log(`Attempting to download Instagram content (attempt ${attempt}/${maxRetries})`);
 
-                const youtubedl = require('youtube-dl-exec');
+                const youtubedl = require('../services/YtDlp');
 
                 if (format === 'audio') {
                     await youtubedl(this.url, {
+                        ...cookieOptions('instagram'),
+                        playlistItems: '1',
+                        noPlaylist: true,
                         extractAudio: true,
                         audioFormat: 'mp3',
                         audioQuality: '64K',
@@ -77,6 +98,9 @@ class InstagramDownloader extends BaseDownloader {
                 } else if (format === 'video') {
                     // Instagram videos are typically high quality, download best available
                     await youtubedl(this.url, {
+                        ...cookieOptions('instagram'),
+                        playlistItems: '1',
+                        noPlaylist: true,
                         output: outputPath,
                         format: 'best[ext=mp4]/best',
                         mergeOutputFormat: 'mp4',

@@ -103,6 +103,23 @@ class UIService {
     }
 
     static createErrorMessage(error, platform = null) {
+        if (error.code === 'FILE_TOO_LARGE') return `❌ ${error.message}`;
+        const details = error.message || String(error);
+        if (/cookies_file does not exist/i.test(details)) {
+            return '❌ Не найден файл cookies. Проверьте путь в настройках бота.';
+        }
+        if (/login|log in|sign in|cookies|private|rate.limit|429/i.test(details)) {
+            return '❌ Сервис требует вход или временно ограничил доступ. Для Instagram добавьте свежие cookies через INSTAGRAM_COOKIES_FILE. Проверьте, доступен ли ролик в браузере.';
+        }
+        if (/ffmpeg|ffprobe/i.test(details)) {
+            return '❌ Для обработки видео и аудио требуется ffmpeg. Установите его и перезапустите бота.';
+        }
+        if (/executable not found/i.test(details)) {
+            return '❌ Не найден yt-dlp. Выполните npm install или проверьте YT_DLP_PATH.';
+        }
+        if (/does not contain a downloadable video/i.test(details)) {
+            return '❌ В выбранной публикации Instagram нет видео для скачивания.';
+        }
         let message = '❌ ';
 
         if (platform) {

@@ -1,29 +1,24 @@
 require("dotenv").config();
-const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
-const { Bot, GrammyError, HttpError, InputFile, InlineKeyboard } = require("grammy");
+const { Bot, GrammyError, HttpError, InputFile } = require("grammy");
 
 // Import our new modular services
 const DownloaderFactory = require('./downloaders/DownloaderFactory');
 const DownloadService = require('./services/DownloadService');
 const DownloadQueue = require('./services/DownloadQueue');
 const UIService = require('./services/UIService');
-const { botConfig } = require('./config/platforms');
+const { getTelegramConfig } = require('./config/telegram');
 
 const pendingDownloads = new Map();
-let messagesIds = [];
 
 // Create download queue with max 2 concurrent downloads
 const downloadQueue = new DownloadQueue(2);
 
-const bot = new Bot(process.env.BOT_API_KEY);
-
-// Periodic cleanup of old downloads
-setInterval(() => {
-    DownloadService.periodicCleanup();
-}, botConfig.cleanupInterval);
+const telegram = getTelegramConfig();
+const bot = new Bot(process.env.BOT_API_KEY, {
+    client: { apiRoot: telegram.apiRoot, timeoutSeconds: telegram.timeoutSeconds }
+});
 
 bot.command("start", async (ctx) => {
     await ctx.reply(`Hello, I am TubobubaBot! I help you to download videos from YouTube, Instagram and TikTok. Just send me a link to the video you want to download. To support the bot, you can buy me a coffee: ${process.env.BUY_ME_A_COFFEE_URL}`);
@@ -49,34 +44,7 @@ bot.command("queue", async (ctx) => {
         message += `\n🔄 **Active Jobs:**\n`;
         status.activeJobs.forEach(job => {
             const duration = Math.floor(job.duration / 1000 / 60); // minutes
-            message += `• Job ${job.id.slice(-4)}: ${job.status} (${duration}min)\n`;
-        });
-    }
-
-    await ctx.reply(message, { parse_mode: 'Markdown' });
-});
-
-bot.command("queue", async (ctx) => {
-    const status = downloadQueue.getStatus();
-    const userPosition = downloadQueue.getQueuePosition(ctx.from.id);
-
-    let message = `📊 **Download Queue Status**\n\n`;
-    message += `🎯 **Active Downloads:** ${status.activeDownloads}/${status.maxConcurrent}\n`;
-    message += `📋 **Queued Jobs:** ${status.queueLength}\n`;
-
-    if (userPosition.position > 0) {
-        const waitMinutes = Math.ceil(userPosition.estimatedWait / (60 * 1000));
-        message += `⏰ **Your Position:** ${userPosition.position} in queue\n`;
-        message += `⏱️ **Estimated Wait:** ${waitMinutes} minutes\n`;
-    } else {
-        message += `✅ **Your download can start immediately!**\n`;
-    }
-
-    if (status.activeJobs.length > 0) {
-        message += `\n🔄 **Active Jobs:**\n`;
-        status.activeJobs.forEach(job => {
-            const duration = Math.floor(job.duration / 1000 / 60); // minutes
-            message += `• Job ${job.id.slice(-4)}: ${job.status} (${duration}min)\n`;
+            message += `• Job ${String(job.id).slice(-4)}: ${job.status} (${duration}min)\n`;
         });
     }
 
@@ -126,7 +94,8 @@ bot.on("message:entities:url", async (ctx) => {
             pendingDownloads.set(ctx.from.id, {
                 downloader,
                 info,
-                userMessageId: ctx.message.message_id
+                userMessageId: ctx.message.message_id,
+                chatId: ctx.chat.id
             });
 
             // Create format keyboard based on platform capabilities
@@ -143,11 +112,11 @@ bot.on("message:entities:url", async (ctx) => {
                 `Choose the format you want to download for "${info.title}":${queueInfo}`,
                 { reply_markup: formatKeyboard }
             );
-            messagesIds.push(messageId.message_id);
+            pendingDownloads.get(ctx.from.id).selectionMessageId = messageId.message_id;
 
         } catch (error) {
             console.error("Error processing URL:", error);
-            await ctx.reply(`Error fetching video info: ${error.message}`);
+            await ctx.reply(UIService.createErrorMessage(error));
         }
     } else {
         const supportedPlatforms = DownloaderFactory.getSupportedPlatforms();
@@ -156,17 +125,19 @@ bot.on("message:entities:url", async (ctx) => {
     }
 });
 
-bot.on("callback_query", async (ctx) => {
+bot.on("callback_query:data", async (ctx) => {
     const data = ctx.callbackQuery.data;
     const pending = pendingDownloads.get(ctx.from.id);
-    if (!pending) {
+    if (!pending || pending.chatId !== ctx.chat?.id ||
+        pending.selectionMessageId !== ctx.callbackQuery.message?.message_id) {
         await ctx.answerCallbackQuery("No pending download.");
         return;
     }
 
     await ctx.answerCallbackQuery(); // Acknowledge the callback
 
-    const { downloader, info, userMessageId } = pending;
+    const { downloader, info, userMessageId, selectionMessageId } = pending;
+    const messagesIds = [selectionMessageId];
     pendingDownloads.delete(ctx.from.id);
 
     if (data === "delete_message") {
@@ -202,6 +173,7 @@ bot.on("callback_query", async (ctx) => {
 
     // Create download job function
     const downloadJob = async () => {
+        let result;
         try {
             // Update message to show download started
             await ctx.api.editMessageText(
@@ -211,7 +183,7 @@ bot.on("callback_query", async (ctx) => {
             );
 
             // Use the download service
-            const result = await DownloadService.downloadContent(
+            result = await DownloadService.downloadContent(
                 downloader,
                 format,
                 resolution,
@@ -225,44 +197,16 @@ bot.on("callback_query", async (ctx) => {
                 `📤 ${UIService.createProgressMessage(info.platform, format, resolution)}\n\n📨 **Sending file...**`
             );
 
-            if (result.needsSplit) {
-                // Handle split files
-                for (let i = 0; i < result.filePaths.length; i++) {
-                    const partPath = result.filePaths[i];
-                    const partTitle = `${info.title} Part ${i + 1}`;
-                    const sanitizedPartTitle = partTitle.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50);
-                    const actualExt = path.extname(partPath);
-
-                    if (format === "audio") {
-                        await ctx.replyWithAudio(
-                            new InputFile(fs.createReadStream(partPath), `${sanitizedPartTitle}${actualExt}`),
-                            { performer: info.uploader, title: partTitle, caption: partTitle }
-                        );
-                    } else {
-                        await ctx.replyWithVideo(
-                            new InputFile(fs.createReadStream(partPath), `${sanitizedPartTitle}${actualExt}`),
-                            { caption: partTitle }
-                        );
-                    }
-                    fs.unlinkSync(partPath);
-                }
+            const sanitizedTitle = info.title.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 80);
+            const actualExt = path.extname(result.filePath);
+            const input = new InputFile(result.filePath, `${sanitizedTitle}${actualExt}`);
+            const caption = info.title.substring(0, 1024);
+            if (format === "audio") {
+                await ctx.replyWithAudio(input, { performer: info.uploader, title: info.title, caption });
+            } else if (actualExt === '.mp4') {
+                await ctx.replyWithVideo(input, { caption, supports_streaming: true });
             } else {
-                // Handle single file
-                const sanitizedTitle = info.title.replace(/[\/\\:*?"<>|]/g, '_').substring(0, 50);
-                const actualExt = path.extname(result.filePath);
-
-                if (format === "audio") {
-                    await ctx.replyWithAudio(
-                        new InputFile(fs.createReadStream(result.filePath), `${sanitizedTitle}${actualExt}`),
-                        { performer: info.uploader, title: info.title, caption: info.title }
-                    );
-                } else {
-                    await ctx.replyWithVideo(
-                        new InputFile(fs.createReadStream(result.filePath), `${sanitizedTitle}${actualExt}`),
-                        { performer: info.uploader, title: info.title, caption: info.title }
-                    );
-                }
-                fs.unlinkSync(result.filePath);
+                await ctx.replyWithDocument(input, { caption });
             }
 
             return { success: true };
@@ -270,6 +214,8 @@ bot.on("callback_query", async (ctx) => {
         } catch (error) {
             console.error('Download job error:', error);
             throw error;
+        } finally {
+            if (result) await DownloadService.cleanup(result.downloadId);
         }
     };
 
@@ -278,7 +224,13 @@ bot.on("callback_query", async (ctx) => {
         await downloadQueue.addJob(downloadJob);
     } catch (queueError) {
         console.error('Queue error:', queueError);
-        await ctx.reply(`❌ Failed to add download to queue: ${queueError.message}`);
+        await ctx.reply(UIService.createErrorMessage(queueError));
+        if (queueError.code === 'FILE_TOO_LARGE' && !pendingDownloads.has(ctx.from.id)) {
+            const selection = await ctx.reply('Выберите другое качество или аудио:', {
+                reply_markup: UIService.createFormatKeyboard(info.platform, info.title)
+            });
+            pendingDownloads.set(ctx.from.id, { ...pending, selectionMessageId: selection.message_id });
+        }
     }
 
     // Clean up bot messages
@@ -289,7 +241,6 @@ bot.on("callback_query", async (ctx) => {
     } catch (e) {
         console.log("Failed to delete message:", e.message);
     }
-    messagesIds = [];
 });
 
 bot.catch((err) => {

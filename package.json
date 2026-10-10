@@ -1,22 +1,23 @@
 {
- "name": "tubobubabot",
- "version": "1.0.0",
- "description": "",
- "main": "index.js",
- "scripts": {
-  "start": "node --no-deprecation index.js",
-  "dev": "nodemon index.js",
-  "setup": "./setup.sh",
-  "test": "node --check index.js"
- },
- "keywords": [],
- "author": "",
- "license": "ISC",
- "type": "commonjs",
- "dependencies": {
-  "dotenv": "^17.4.2",
-  "grammy": "^1.42.0",
-  "nodemon": "^3.1.14",
-  "youtube-dl-exec": "^3.1.5"
- }
+  "name": "tubobubabot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --no-deprecation index.js",
+    "dev": "nodemon index.js",
+    "setup": "./setup.sh",
+    "test": "node --check index.js && node --test",
+    "update:yt-dlp": "node scripts/update-ytdlp.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "grammy": "^1.42.0",
+    "nodemon": "^3.1.14",
+    "youtube-dl-exec": "^3.1.5"
+  }
 }

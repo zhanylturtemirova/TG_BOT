@@ -10,10 +10,11 @@ class TikTokDownloader extends BaseDownloader {
                 console.log(`Attempting to get TikTok info (attempt ${attempt}/${maxRetries})`);
 
                 // For now, using youtube-dl-exec which supports TikTok
-                const youtubedl = require('youtube-dl-exec');
+                const youtubedl = require('../services/YtDlp');
                 const info = await youtubedl(this.url, {
                     dumpSingleJson: true,
-                    noDownload: true,
+                    skipDownload: true,
+                    noPlaylist: true,
                     addHeader: [
                         'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     ],
@@ -58,7 +59,7 @@ class TikTokDownloader extends BaseDownloader {
             try {
                 console.log(`Attempting to download TikTok content (attempt ${attempt}/${maxRetries})`);
 
-                const youtubedl = require('youtube-dl-exec');
+                const youtubedl = require('../services/YtDlp');
 
                 if (format === 'audio') {
                     await youtubedl(this.url, {

@@ -2,15 +2,13 @@
 const platformConfig = {
     youtube: {
         name: 'YouTube',
-        maxFileSize: 50 * 1024 * 1024, // 50MB
         supportedFormats: ['audio', 'video'],
-        videoResolutions: ['144', '260', '360', '480', '720', '1080'],
+        videoResolutions: ['144', '240', '360', '480', '720', '1080', 'best'],
         audioQuality: '64K',
         audioFormat: 'mp3'
     },
     instagram: {
         name: 'Instagram',
-        maxFileSize: 50 * 1024 * 1024, // 50MB
         supportedFormats: ['audio', 'video'],
         videoResolutions: ['best'], // Instagram provides one high-quality video
         audioQuality: '64K',
@@ -18,7 +16,6 @@ const platformConfig = {
     },
     tiktok: {
         name: 'TikTok',
-        maxFileSize: 50 * 1024 * 1024, // 50MB
         supportedFormats: ['audio', 'video'],
         videoResolutions: ['best'], // TikTok provides one video quality
         audioQuality: '64K',

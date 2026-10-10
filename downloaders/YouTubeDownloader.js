@@ -1,5 +1,6 @@
-const youtubedl = require('youtube-dl-exec');
+const youtubedl = require('../services/YtDlp');
 const BaseDownloader = require('./BaseDownloader');
+const { cookieOptions } = require('../services/YtDlp');
 
 class YouTubeDownloader extends BaseDownloader {
     async getInfo() {
@@ -11,15 +12,15 @@ class YouTubeDownloader extends BaseDownloader {
                 console.log(`Attempting to get YouTube info (attempt ${attempt}/${maxRetries})`);
 
                 const info = await youtubedl(this.url, {
+                    ...cookieOptions('youtube'),
                     dumpSingleJson: true,
-                    noDownload: true,
+                    skipDownload: true,
+                    noPlaylist: true,
                     // Add headers to appear more like a real browser
                     addHeader: [
                         'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                         'Accept-Language:en-US,en;q=0.9'
                     ],
-                    // Use cookies if available (you can add a cookies.txt file)
-                    cookies: './cookies.txt', // Optional: create this file with YouTube cookies
                     // Force IPv4 to avoid some connectivity issues
                     forceIpv4: true,
                     // Add retry and timeout options
@@ -29,7 +30,7 @@ class YouTubeDownloader extends BaseDownloader {
                     // Use geo-bypass if needed
                     geoBypass: true,
                     // Try to use Node.js as JS runtime if available
-                    jsRuntime: 'node'
+                    jsRuntimes: `node:${process.execPath}`
                 });
 
                 return {
@@ -70,6 +71,8 @@ class YouTubeDownloader extends BaseDownloader {
 
                 if (format === 'audio') {
                     await youtubedl(this.url, {
+                        ...cookieOptions('youtube'),
+                        noPlaylist: true,
                         extractAudio: true,
                         audioFormat: 'mp3',
                         audioQuality: '64K',
@@ -78,31 +81,34 @@ class YouTubeDownloader extends BaseDownloader {
                         addHeader: [
                             'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                         ],
-                        cookies: './cookies.txt',
                         forceIpv4: true,
                         retrySleep: 2,
                         sleepInterval: 1,
                         maxSleepInterval: 5,
                         geoBypass: true,
-                        jsRuntime: 'node'
+                        jsRuntimes: `node:${process.execPath}`
                     });
                 } else if (format === 'video') {
                     await youtubedl(this.url, {
+                        ...cookieOptions('youtube'),
+                        noPlaylist: true,
                         output: outputPath,
-                        format: `bestvideo[height<=${resolution}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${resolution}][ext=mp4]/best[ext=mp4]`,
+                        format: resolution === 'best'
+                            ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]'
+                            : `bestvideo[height<=${resolution}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${resolution}][ext=mp4]`,
                         // Merge to MP4 format
                         mergeOutputFormat: 'mp4',
+                        formatSort: 'vcodec:h264,acodec:aac',
                         // Add same headers and options as getInfo
                         addHeader: [
                             'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                         ],
-                        cookies: './cookies.txt',
                         forceIpv4: true,
                         retrySleep: 2,
                         sleepInterval: 1,
                         maxSleepInterval: 5,
                         geoBypass: true,
-                        jsRuntime: 'node'
+                        jsRuntimes: `node:${process.execPath}`
                     });
                 }
 
@@ -129,7 +135,7 @@ class YouTubeDownloader extends BaseDownloader {
     }
 
     getVideoResolutions() {
-        return ['144', '260', '360', '480', '720', '1080'];
+        return ['144', '240', '360', '480', '720', '1080', 'best'];
     }
 }
 

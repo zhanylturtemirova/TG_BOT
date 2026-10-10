@@ -1,44 +1,24 @@
-# YouTube Cookies Setup Guide
+# Cookies для Instagram и YouTube
 
-To improve YouTube access and avoid "Sign in to confirm you're not a bot" errors, you can export your YouTube cookies.
+Cookies нужны, когда сервис требует вход или ограничивает анонимный доступ. Публичные ролики могут скачиваться и без них.
 
-## Method 1: Using yt-dlp (Recommended)
+Экспортируйте cookies нужного сайта из своего браузера в формате Netscape и сохраните файл локально. Укажите путь в `.env`:
 
-1. **Install browser cookies extension** (if using Chrome/Firefox)
-2. **Export cookies**:
-   ```bash
-   yt-dlp --cookies-from-browser chrome --cookies cookies.txt
-   ```
-   Replace `chrome` with `firefox`, `safari`, or `edge` depending on your browser.
+```dotenv
+INSTAGRAM_COOKIES_FILE=instagram-cookies.txt
+YOUTUBE_COOKIES_FILE=youtube-cookies.txt
+```
 
-3. **Place the file**: Put `cookies.txt` in the bot's root directory.
+Поддерживаются абсолютные пути и пути относительно корня проекта. Один и тот же файл применяется и при получении информации, и при скачивании. Если отдельный путь не указан, используется `cookies.txt` из корня проекта при его наличии. Cookies YouTube не авторизуют Instagram.
 
-## Method 2: Manual Cookie Export
+Для экспорта через yt-dlp можно использовать команду ниже, заменив браузер на свой:
 
-1. **Install "Get cookies.txt" extension** for your browser
-2. **Visit YouTube** and log in
-3. **Export cookies** to `cookies.txt`
-4. **Place the file** in the bot's root directory
+```bash
+node_modules/youtube-dl-exec/bin/yt-dlp --cookies-from-browser chrome --cookies instagram-cookies.txt --skip-download 'https://www.instagram.com/reel/YOUR_REEL_ID/'
+```
 
-## Method 3: Using Browser DevTools
+Этот способ может экспортировать cookies других сайтов из профиля; предпочтительнее отдельный профиль браузера для бота. Не отправляйте файлы cookies в чат и не публикуйте их в Git: они могут давать доступ к аккаунту. Новые `*cookies*.txt` исключены через `.gitignore`; это не удаляет файлы, ранее добавленные в историю Git.
 
-1. **Open YouTube** in your browser and log in
-2. **Open DevTools** (F12)
-3. **Go to Application/Storage > Cookies**
-4. **Export cookies** in Netscape format
-5. **Save as `cookies.txt`** in the bot's root directory
+Если доступ перестал работать, войдите в Instagram в браузере, проверьте доступ к ролику и повторите экспорт. Аккаунт должен иметь доступ к закрытой публикации. Ошибку 429 лучше переждать; повторные запросы не устраняют ограничение сервиса.
 
-## Important Notes
-
-- **Privacy**: Only share cookies with applications you trust
-- **Expiration**: Cookies expire, you may need to update them periodically
-- **Security**: Never commit `cookies.txt` to version control
-- **Optional**: The bot works without cookies, but they help with rate limiting
-
-## Troubleshooting
-
-If cookies don't work:
-1. Make sure you're logged into YouTube
-2. Try a different browser
-3. Check that the cookies file is in the correct format
-4. The bot will still work without cookies (just with more retries)
+[Документация yt-dlp по cookies](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
