@@ -13,8 +13,9 @@ const cloud = getTelegramConfig({});
 const local = getTelegramConfig({ TELEGRAM_LOCAL_MODE: 'true', TELEGRAM_API_ROOT: 'http://127.0.0.1:8081/' });
 
 function fakeDownloader(size, failure = false) {
-    // Preserve the platform class name used by DownloadService.
-    return new class InstagramDownloader {
+    // Only the platform contract matters, not the constructor name.
+    return new class FakeDownloader {
+        platform = 'instagram';
         async download(output) {
             await fs.writeFile(output, 'media');
             await fs.truncate(output, size); // Sparse fixtures, no real 2 GB allocation.
@@ -33,7 +34,7 @@ test('local uploads require an explicit custom API origin', () => {
     assert.equal(getTelegramConfig({ TELEGRAM_API_ROOT: 'http://localhost:8081' }).maxFileSize, cloud.maxFileSize);
 });
 
-test('a file at the cloud limit is sent whole and cleanup removes intermediate streams', async () => {
+test('a file at the cloud limit is accepted whole and cleanup removes intermediate streams', async () => {
     const service = new DownloadService(cloud);
     const result = await service.downloadContent(fakeDownloader(cloud.maxFileSize), 'video', 'best', 'test');
     assert.equal(result.needsSplit, false);
@@ -50,7 +51,7 @@ test('oversized cloud downloads fail clearly and clean up instead of splitting',
     assert.equal(service.activeDownloads.size, 0);
 });
 
-test('local mode sends a 60 MB file whole and enforces its own upper boundary', async () => {
+test('local policy accepts a 60 MB file whole and enforces its own upper boundary', async () => {
     const service = new DownloadService(local);
     const result = await service.downloadContent(fakeDownloader(60_000_000), 'video', 'best', 'test');
     assert.equal(result.fileSize, 60_000_000);

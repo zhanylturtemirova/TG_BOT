@@ -4,13 +4,14 @@ const { platformConfig } = require('../config/platforms');
 const { getTelegramConfig } = require('../config/telegram');
 
 class DownloadService {
-    constructor(telegram = getTelegramConfig()) {
+    constructor(telegram = getTelegramConfig(), { tempDir = path.resolve(__dirname, '../temp') } = {}) {
+        this.tempDir = tempDir;
         this.telegram = telegram;
         this.activeDownloads = new Map();
     }
 
     async downloadContent(downloader, format, resolution = null, userId) {
-        const platform = downloader.constructor.name.toLowerCase().replace('downloader', '');
+        const platform = downloader.platform;
         const config = platformConfig[platform];
         if (!config || !config.supportedFormats.includes(format)) {
             throw new Error(`Unsupported download format: ${format}`);
@@ -20,9 +21,9 @@ class DownloadService {
             throw new Error(`Unsupported resolution: ${resolution}`);
         }
 
-        const tempDir = path.resolve(__dirname, '../temp');
+        const tempDir = this.tempDir;
         await fs.mkdir(tempDir, { recursive: true });
-        const workDir = await fs.mkdtemp(path.join(tempDir, `${userId}_`));
+        const workDir = await fs.mkdtemp(path.join(tempDir, `${String(userId).replace(/[^a-zA-Z0-9_-]/g, '_')}_`));
         const downloadId = path.basename(workDir);
         this.activeDownloads.set(downloadId, { workDir, status: 'processing', startTime: Date.now() });
         try {
@@ -64,10 +65,9 @@ class DownloadService {
 
     getActiveDownloads(userId) {
         return [...this.activeDownloads.entries()]
-            .filter(([key]) => key.startsWith(`${userId}_`))
+            .filter(([key]) => key.startsWith(`${String(userId).replace(/[^a-zA-Z0-9_-]/g, '_')}_`))
             .map(([id, value]) => ({ id, ...value }));
     }
 }
 
-module.exports = new DownloadService();
-module.exports.DownloadService = DownloadService;
+module.exports = { DownloadService };

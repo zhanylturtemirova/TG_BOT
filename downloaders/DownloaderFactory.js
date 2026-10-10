@@ -1,41 +1,36 @@
+const { platformConfig } = require('../config/platforms');
 const YouTubeDownloader = require('./YouTubeDownloader');
 const InstagramDownloader = require('./InstagramDownloader');
 const TikTokDownloader = require('./TikTokDownloader');
 
-class DownloaderFactory {
-    static createDownloader(url) {
-        const hostname = new URL(url).hostname.toLowerCase();
+const downloaders = {
+    youtube: YouTubeDownloader,
+    instagram: InstagramDownloader,
+    tiktok: TikTokDownloader
+};
 
-        if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-            return new YouTubeDownloader(url);
-        } else if (hostname.includes('instagram.com')) {
-            return new InstagramDownloader(url);
-        } else if (hostname.includes('tiktok.com')) {
-            return new TikTokDownloader(url);
-        } else {
-            throw new Error(`Unsupported platform: ${hostname}`);
-        }
-    }
-
-    static getSupportedPlatforms() {
-        return [
-            { name: 'YouTube', domains: ['youtube.com', 'youtu.be'] },
-            { name: 'Instagram', domains: ['instagram.com'] },
-            { name: 'TikTok', domains: ['tiktok.com'] }
-            // Add more platforms here in the future
-        ];
-    }
-
-    static isSupported(url) {
-        try {
-            const hostname = new URL(url).hostname.toLowerCase();
-            return this.getSupportedPlatforms().some(platform =>
-                platform.domains.some(domain => hostname.includes(domain))
-            );
-        } catch {
-            return false;
-        }
+function identifyPlatform(input) {
+    try {
+        const url = new URL(input);
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+        return Object.keys(platformConfig).find(platform =>
+            platformConfig[platform].domains.some(domain =>
+                url.hostname === domain || url.hostname.endsWith(`.${domain}`)
+            )
+        ) || null;
+    } catch {
+        return null;
     }
 }
 
-module.exports = DownloaderFactory;
+function createDownloader(url) {
+    const platform = identifyPlatform(url);
+    if (!platform) throw new Error('Unsupported video URL');
+    return new downloaders[platform](url);
+}
+
+module.exports = {
+    createDownloader,
+    isSupported: url => identifyPlatform(url) !== null,
+    getSupportedPlatforms: () => Object.values(platformConfig).map(({ name, domains }) => ({ name, domains }))
+};

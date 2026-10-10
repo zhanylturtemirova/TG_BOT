@@ -1,172 +1,50 @@
+const { randomUUID } = require('node:crypto');
+
 class DownloadQueue {
     constructor(maxConcurrent = 2) {
-        this.queue = [];
-        this.activeDownloads = new Map();
+        if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1) {
+            throw new Error('maxConcurrent must be a positive integer');
+        }
         this.maxConcurrent = maxConcurrent;
-        this.processing = false;
+        this.waitingJobs = [];
+        this.activeJobs = new Map();
     }
 
-    // Add a download job to the queue
-    async addJob(job) {
+    addJob(run, ownerId) {
         return new Promise((resolve, reject) => {
-            const queueItem = {
-                job,
-                resolve,
-                reject,
-                id: Date.now() + Math.random(),
-                addedAt: new Date()
-            };
-
-            this.queue.push(queueItem);
-
-            // Start processing if not already running
-            if (!this.processing) {
-                this.processQueue();
-            }
-
-            console.log(`📋 Job added to queue. Position: ${this.queue.length}`);
+            this.waitingJobs.push({ id: randomUUID(), run, ownerId, resolve, reject });
+            this.startWaitingJobs();
         });
     }
 
-    // Process the queue
-    async processQueue() {
-        if (this.processing) return;
-
-        this.processing = true;
-
-        while (this.queue.length > 0) {
-            // Check if we can start more downloads
-            if (this.activeDownloads.size >= this.maxConcurrent) {
-                // Wait for a download to complete
-                await this.waitForDownloadCompletion();
-            }
-
-            // Get next job
-            const queueItem = this.queue.shift();
-            if (!queueItem) continue;
-
-            // Start the download
-            this.startDownload(queueItem);
+    startWaitingJobs() {
+        while (this.waitingJobs.length && this.activeJobs.size < this.maxConcurrent) {
+            const job = this.waitingJobs.shift();
+            this.activeJobs.set(job.id, job);
+            void this.runJob(job);
         }
-
-        this.processing = false;
     }
 
-    // Start a download job
-    async startDownload(queueItem) {
-        const { job, resolve, reject, id } = queueItem;
-
+    async runJob(job) {
         try {
-            // Mark as active
-            this.activeDownloads.set(id, {
-                job,
-                startTime: new Date(),
-                status: 'processing'
-            });
-
-            console.log(`▶️ Starting download job ${id}`);
-
-            // Execute the job
-            const result = await job();
-
-            // Mark as completed
-            this.activeDownloads.set(id, {
-                ...this.activeDownloads.get(id),
-                status: 'completed',
-                endTime: new Date()
-            });
-
-            console.log(`✅ Download job ${id} completed`);
-            resolve(result);
-
+            job.resolve(await job.run());
         } catch (error) {
-            // Mark as failed
-            this.activeDownloads.set(id, {
-                ...this.activeDownloads.get(id),
-                status: 'failed',
-                endTime: new Date(),
-                error: error.message
-            });
-
-            console.log(`❌ Download job ${id} failed:`, error.message);
-            reject(error);
+            job.reject(error);
         } finally {
-            // Remove from active downloads
-            this.activeDownloads.delete(id);
+            this.activeJobs.delete(job.id);
+            this.startWaitingJobs();
         }
     }
 
-    // Wait for any download to complete
-    async waitForDownloadCompletion() {
-        return new Promise((resolve) => {
-            const checkCompletion = () => {
-                if (this.activeDownloads.size < this.maxConcurrent) {
-                    resolve();
-                } else {
-                    // Check again in 1 second
-                    setTimeout(checkCompletion, 1000);
-                }
-            };
-            checkCompletion();
-        });
-    }
-
-    // Get queue status
-    getStatus() {
+    getStatus(ownerId) {
+        const position = this.waitingJobs.findIndex(job => job.ownerId === ownerId);
         return {
-            queueLength: this.queue.length,
-            activeDownloads: this.activeDownloads.size,
+            activeDownloads: this.activeJobs.size,
             maxConcurrent: this.maxConcurrent,
-            activeJobs: Array.from(this.activeDownloads.entries()).map(([id, job]) => ({
-                id,
-                status: job.status,
-                duration: job.startTime ? (new Date() - job.startTime) : 0
-            }))
+            queueLength: this.waitingJobs.length,
+            position: position + 1,
+            userActive: [...this.activeJobs.values()].some(job => job.ownerId === ownerId)
         };
-    }
-
-    // Get position in queue for a specific user
-    getQueuePosition(userId) {
-        // This would require tracking user IDs in the queue
-        // For now, return general queue info
-        const status = this.getStatus();
-        return {
-            position: status.queueLength,
-            active: status.activeDownloads,
-            estimatedWait: this.estimateWaitTime()
-        };
-    }
-
-    // Estimate wait time based on current active downloads
-    estimateWaitTime() {
-        const status = this.getStatus();
-        if (status.activeDownloads < this.maxConcurrent) {
-            return 0; // Can start immediately
-        }
-
-        // Rough estimate: assume average download takes 2 minutes
-        const avgDownloadTime = 2 * 60 * 1000; // 2 minutes in ms
-        const slotsAvailable = this.maxConcurrent - status.activeDownloads;
-
-        if (slotsAvailable > 0) {
-            return 0; // Slot available
-        }
-
-        // Estimate based on queue position
-        return Math.ceil(status.queueLength / this.maxConcurrent) * avgDownloadTime;
-    }
-
-    // Cancel a job (if needed)
-    cancelJob(jobId) {
-        // Remove from queue if not started
-        this.queue = this.queue.filter(item => item.id !== jobId);
-
-        // Cancel active job if possible
-        const activeJob = this.activeDownloads.get(jobId);
-        if (activeJob) {
-            // Note: Actual cancellation would require job-specific cancellation logic
-            console.log(`Attempting to cancel active job ${jobId}`);
-        }
     }
 }
 

@@ -5,19 +5,23 @@
   "main": "index.js",
   "scripts": {
     "start": "node --no-deprecation index.js",
-    "dev": "nodemon index.js",
+    "dev": "node --watch --no-deprecation index.js",
     "setup": "./setup.sh",
-    "test": "node --check index.js && node --test",
-    "update:yt-dlp": "node scripts/update-ytdlp.js"
+    "test": "node --check index.js && node --test test/*.test.js",
+    "update:yt-dlp": "node scripts/update-ytdlp.js",
+    "test:coverage": "node --test --experimental-test-coverage test/*.test.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@grammyjs/runner": "^2.0.3",
     "dotenv": "^17.4.2",
     "grammy": "^1.42.0",
-    "nodemon": "^3.1.14",
     "youtube-dl-exec": "^3.1.5"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
